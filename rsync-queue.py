@@ -33,7 +33,7 @@ def log(text):
 
 def rsync(origin, destination):
     ssh_options = ['-e', 'ssh -o ConnectTimeout=120 -o ServerAliveInterval=120']
-    rsync_options = ["-rvt", "--inplace", "--timeout=120", "--bwlimit=12k", "--remove-source-files"]
+    rsync_options = ["-rvt", "--inplace", "--timeout=120", "--bwlimit=12k"]
 
     while True:
         retval = execute(["rsync"] + ssh_options + rsync_options + [origin] + [destination], print_command = True)
@@ -58,6 +58,7 @@ def move_next_file(source, destination):
 
     if len(files) > 0:
         log("Moving file from {} to {}".format(files[0], destination))
+        os.makedirs(destination, exist_ok=True)
         shutil.move(files[0], destination)
         return True
 
@@ -89,6 +90,10 @@ def start_uploading(directory, rsync_dst, mail):
             rsync(file_path, rsync_dst)
             # if rsync finishes is that the file finished uploading
             notify_by_mail(file_path, mail)
+
+            destination_directory = os.path.join(pending_upload_directory, "..", "uploaded")
+            os.makedirs(destination_directory, exist_ok=True)
+            shutil.move(file_path, destination_directory)
 
         else:
             moved = move_next_file(directory, pending_upload_directory)
