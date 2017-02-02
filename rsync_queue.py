@@ -7,22 +7,75 @@ import shutil
 import datetime
 import subprocess
 import smtplib
+import signal
+import sys
 
 LOG_FILE=os.path.join(os.environ["HOME"], ".rsync-queue.log")
+LAST_PROGRESS_LINE=None
+EMAIL_PROGRESS=None
+FILE_PATH=None
 
-def execute(cmd, abort_if_fails=False, print_command=False):
-    if print_command:
-        print("** Execute: {}".format(" ".join(cmd)))
+def mail_last_progress():
+    file_name = os.path.basename(file_path)
 
-    p = subprocess.Popen(cmd)
-    p.communicate()[0]
-    retval = p.returncode
+    s = smtplib.SMTP("localhost")
+    tolist = ["data@ace-expedition.net"]
+    message = """
+From: uploader@ace-expedition.net
+Subject: file progress
+
+The file "{}" was being uploaded but the uploader has been killed.
+
+The last progress line from rsync is:
+{}
+
+
+""".format(FILE_PATH, LAST_PROGRESS_LINE)
+
+    s.sendmail("uploader@ace-expedition.net", tolist, message)
+    s.quit()
+
+
+def signal_term_handler(signal, frame):
+    print("got sigterm")
+    mail_last_progress()
+    sys.exit(0)
+
+
+def process(lines):
+    global LAST_PROGRESS_LINE
+
+    for line in lines:
+        if "%" in line:
+            LAST_PROGRESS_LINE = line
+            log("Progress update file '{}': {}".format(FILE_PATH, LAST_PROGRESS_LINE))
+
+
+def execute_rsync(cmd, abort_if_fails=False, log_command=False):
+    if log_command:
+        log("Execute: {}".format(" ".join(cmd)))
+
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    while True:
+        # Updates proc.returncode()
+        proc.poll()
+        output = proc.stdout.read()
+        output = output.decode('utf-8', errors='ignore')
+        output_progress = output.split("\n")
+        process(output_progress)
+
+        if proc.returncode is not None:
+            break
+
+    retval = proc.returncode
 
     if retval != 0 and abort_if_fails:
         print("Command: _{}_ failed, aborting...".format(cmd))
         exit(1)
 
     return retval
+
 
 def log(text):
     f = open(LOG_FILE, "a")
@@ -65,6 +118,7 @@ def move_next_file(source, destination):
     log("No more files to upload.")
     return False
 
+
 def notify_by_mail(file_path, mail):
     file_name = os.path.basename(file_path)
 
@@ -80,6 +134,7 @@ http://ace-expedition.net/uploaded/{}
 
     s.sendmail("uploader@ace-expedition.net", tolist, message)
     s.quit()
+
 
 def start_uploading(directory, rsync_dst, mail):
     pending_upload_directory = os.path.join(directory, "uploading")
@@ -109,5 +164,5 @@ if __name__ == "__main__":
     parser.add_argument("destination_mail", help="Destination mail to email when it's finished", type=str)
 
     args = parser.parse_args()
-
+    signal.signal(signal.SIGTERM, signal_term_handler)
     start_uploading(args.directory, args.rsync_dst, args.destination_mail)
