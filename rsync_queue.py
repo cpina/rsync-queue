@@ -49,7 +49,7 @@ def read_config(key):
 
 def size_mb_formatted(file_path):
     size_mb = os.path.getsize(FILE_PATH) / 1024 / 1024
-    size_mb = "{:.02}".format(size_mb)
+    size_mb = "{:.3f}".format(size_mb)
 
     return size_mb
 
@@ -60,7 +60,7 @@ def signal_term_handler(signal, frame):
 
     # Kills rsync / any subprocess
     process = psutil.Process()
-    for proc in process.get_children(recursive=True):
+    for proc in process.children(recursive=True):
         proc.kill()
 
     sys.exit(0)
@@ -208,11 +208,11 @@ def send_mail_last_progress():
     message = """From: {from}
 Subject: file uploader progress {file_name}
 
-The file "{file_path}" ({size_mb} MB) was being uploaded but the uploader has been killed.
+The file "{file_path}" [{size_mb} MB] was being uploaded but the uploader has been killed.
 
 The last progress line from rsync is:
 {last_progress}
-Size of the file: {}
+Size of the file: {size_mb}
 
 
 """
