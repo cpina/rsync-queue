@@ -185,7 +185,7 @@ def move_next_file(source, destination):
 def send_mail(message):
     file_name = os.path.basename(FILE_PATH)
     size_mb = size_mb_formatted(FILE_PATH)
-    url = urllib.parse.quote("{}/{}".format(read_config('base_url'), file_name))
+    url = "{}/{}".format(read_config('base_url'), urllib.parse.quote(file_name))
 
     d = {'file_name': file_name,
          'file_path': FILE_PATH,
