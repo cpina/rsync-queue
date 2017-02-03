@@ -194,6 +194,8 @@ def send_mail(message):
          'size_mb': size_mb,
          'from': read_config('notification_email_from')}
 
+    message = message.format(**d)
+
     s = smtplib.SMTP("localhost")
     tolist = [read_config('notification_email_to')]
 
