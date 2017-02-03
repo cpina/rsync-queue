@@ -212,7 +212,7 @@ The file "{file_path}" [{size_mb} MB] was being uploaded but the uploader has be
 
 The last progress line from rsync is:
 {last_progress}
-Size of the file: {size_mb}
+Size of the file: {size_mb} MB
 
 
 """
