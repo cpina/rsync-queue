@@ -12,10 +12,13 @@ import sys
 import select
 import urllib
 
-LOG_FILE=os.path.join(os.environ["HOME"], ".rsync-queue.log")
-LAST_PROGRESS_LINE=None
-EMAIL_PROGRESS=None
-FILE_PATH=None
+LOG_FILE = os.path.join(os.environ["HOME"], ".rsync-queue.log")
+
+# These variables are global because they are accessed from
+# signal_term_handler when the process is terminated
+LAST_PROGRESS_LINE = None
+FILE_PATH = None
+
 
 def mail_last_progress():
     file_name = os.path.basename(FILE_PATH)
@@ -38,18 +41,16 @@ The last progress line from rsync is:
 
 
 def signal_term_handler(signal, frame):
-    print("got sigterm")
     mail_last_progress()
     sys.exit(0)
 
 
-def process(lines):
+def update_progress(line):
     global LAST_PROGRESS_LINE
 
-    for line in lines:
-        if "%" in line:
-            LAST_PROGRESS_LINE = line
-            log("Progress update file '{}': {}".format(FILE_PATH, LAST_PROGRESS_LINE))
+    if "%" in line:
+        LAST_PROGRESS_LINE = line
+        log("Progress update file '{}': {}".format(FILE_PATH, LAST_PROGRESS_LINE))
 
 
 def execute_rsync(cmd, abort_if_fails=False, log_command=False):
@@ -71,24 +72,27 @@ def execute_rsync(cmd, abort_if_fails=False, log_command=False):
         # Waits that stdout or stderr are ready to be read
         (read_fd, _, _) = select.select(reads, [], [], 1) # 1 is 1 second timeout
 
-        lines = []
         for fd in read_fd:
             if fd == proc.stdout.fileno():
-                read = proc.stdout.readline()
-                read = read.replace("\r", "\n") # --progress uses \r
-                read = read.replace("\n", "")
+                line = proc.stdout.readline()
+                line = line.replace("\r", "\n") # --progress uses \r
+                line = line.strip()
 
-                log("stdout: {}".format(read))
-                lines.append(read)
+                print(line)
+
+                log("stdout: {}".format(line))
+                update_progress(line)
 
             elif fd == proc.stderr.fileno():
-                read = proc.stderr.readline()
-                read = read.replace("\n", "")
-                log("stderr: {}".format(read))
+                line = proc.stderr.readline()
+                line = line.strip()
 
-        process(lines)
+                print(line)
 
-        # Updates proc.returncode()
+                log("stderr: {}".format(line))
+
+
+        # Updates proc.returncode()read
         proc.poll()
 
         if proc.returncode is not None:
@@ -111,8 +115,11 @@ def log(text):
 
 
 def rsync(origin, destination):
+    global FILE_PATH
+    FILE_PATH = origin
+
     ssh_options = ['-e', 'ssh -o ConnectTimeout=120 -o ServerAliveInterval=120']
-    rsync_options = ["-rvt", "--progress", "--inplace", "--timeout=120", "--bwlimit=6k"]
+    rsync_options = ["-rvt", "--progress", "--inplace", "--timeout=120", "--bwlimit=2k"]
 
     while True:
         retval = execute_rsync(["rsync"] + ssh_options + rsync_options + [origin] + [destination], log_command = True)
