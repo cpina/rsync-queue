@@ -11,6 +11,7 @@ import signal
 import sys
 import select
 import urllib
+import configparser
 
 LOG_FILE = os.path.join(os.environ["HOME"], ".rsync-queue.log")
 
@@ -20,41 +21,41 @@ LAST_PROGRESS_LINE = None
 FILE_PATH = None
 
 
+def print_example_config_file():
+    print("Example config file to be saved in:", )
+    config_file = """[General]
+notification_email_from=uploader@ace-expedition.net
+notification_email_to=data@ace-expedition.net
+rsync_bwlimit=10k
+base_url = http://ace-expedition.net/uploaded/misc/
+"""
+    print(config_file)
+
+
+def read_config(key):
+    cp = configparser.ConfigParser()
+    path = os.path.join(os.getenv("HOME"), ".config", "rsync-uploader.conf")
+    result = cp.read(path)
+
+    if result == []:
+        print_example_config_file()
+        sys.exit(1)
+
+    value = cp.get("General", key)
+
+    return value
+
+
 def size_mb_formatted(file_path):
     size_mb = os.path.getsize(FILE_PATH) / 1024 / 1024
     size_mb = "{:.02}".format(size_mb)
 
     return size_mb
 
-def mail_last_progress():
-    file_name = os.path.basename(FILE_PATH)
-    size_mb = size_mb_formatted(FILE_PATH)
-
-    d={'file_name': file_name,
-       'file_path': FILE_PATH,
-       'last_progress': LAST_PROGRESS_LINE,
-       'size_mb': size_mb}
-
-    s = smtplib.SMTP("localhost")
-    tolist = ["data@ace-expedition.net"]
-    message = """From: uploader@ace-expedition.net
-Subject: file uploader progress {file_name}
-
-The file "{file_path}" ({size_mb} MB) was being uploaded but the uploader has been killed.
-
-The last progress line from rsync is:
-{last_progress}
-Size of the file: {}
-
-
-""".format(**d)
-
-    s.sendmail("uploader@ace-expedition.net", tolist, message)
-    s.quit()
-
 
 def signal_term_handler(signal, frame):
-    mail_last_progress()
+    send_mail_last_progress()
+    log("SIGTERM received")
     sys.exit(0)
 
 
@@ -78,6 +79,8 @@ def execute_rsync(cmd, abort_if_fails=False, log_command=False):
                             stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE,
                             universal_newlines=True)
+
+    RSYNC_PID = proc.pid
 
     while True:
         reads = [proc.stdout.fileno(), proc.stderr.fileno()]
@@ -129,7 +132,7 @@ def rsync(origin, destination):
     FILE_PATH = origin
 
     ssh_options = ['-e', 'ssh -o ConnectTimeout=120 -o ServerAliveInterval=120']
-    rsync_options = ["-rvt", "--progress", "--inplace", "--timeout=120", "--bwlimit=2k"]
+    rsync_options = ["-vtaz", "--progress", "--inplace", "--timeout=120", "--bwlimit={}".format(read_config('rsync_bwlimit'))]
 
     while True:
         retval = execute_rsync(["rsync"] + ssh_options + rsync_options + [origin] + [destination], log_command = True)
@@ -144,7 +147,6 @@ def rsync(origin, destination):
 
 def file_pending_to_upload(directory):
     return len(files_in_a_directory(directory)) > 0
-    return len(glob.glob(os.path.join(directory, "*"))) > 0
 
 
 def files_in_a_directory(directory):
@@ -173,27 +175,57 @@ def move_next_file(source, destination):
     return False
 
 
-def notify_by_mail(file_path, mail):
-    file_name = os.path.basename(file_path)
-    size_mb = size_mb_formatted(file_path)
-    url = "http://ace-expedition.net/uploaded/misc/" + urllib.parse.quote(file_name)
+def send_mail(message):
+    file_name = os.path.basename(FILE_PATH)
+    size_mb = size_mb_formatted(FILE_PATH)
+    url = urllib.parse.quote("{}/{}".format(read_config('base_url'), file_name))
 
+    d = {'file_name': file_name,
+         'file_path': FILE_PATH,
+         'last_progress': LAST_PROGRESS_LINE,
+         'url': url,
+         'size_mb': size_mb,
+         'from': read_config('notification_email_from')}
+
+    s = smtplib.SMTP("localhost")
+    tolist = [read_config('notification_email_to')]
+
+    log("Sending email: {}".format(message))
+    s.sendmail("uploader@ace-expedition.net", tolist, message)
+    s.quit()
+
+
+def send_mail_last_progress():
+    message = """From: {from}
+Subject: file uploader progress {file_name}
+
+The file "{file_path}" ({size_mb} MB) was being uploaded but the uploader has been killed.
+
+The last progress line from rsync is:
+{last_progress}
+Size of the file: {}
+
+
+"""
+    send_mail(message)
+
+def send_mail_file_uploaded(file_path, mail):
     d = {'file_name': file_name,
          'file_path': file_path,
          'size_mb': size_mb,
-         'url': url
+         'from': read_config('notification_email_from')
         }
 
     s = smtplib.SMTP("localhost")
-    tolist = ["data@ace-expedition.net"]
-    message = """From: uploader@ace-expedition.net
+    tolist = [read_config('notification_email_to')]
+    message = """From: {from}
 Subject: file uploaded: {file_name}
 
 The file {file_name} has been uploaded and now is available at:
-http://ace-expedition.net/uploaded/misc/{url} [{size_mb} MB]
+{url} [{size_mb} MB]
 """.format(d)
-
-    s.sendmail("uploader@ace-expedition.net", tolist, message)
+    log("Sending email: {}".format(message))
+    s.sendmail(read_config('notification_email_from'), tolist, message)
     s.quit()
 
 
@@ -205,7 +237,7 @@ def start_uploading(directory, rsync_dst, mail):
             file_path = glob.glob(os.path.join(pending_upload_directory, "*"))[0]
             rsync(file_path, rsync_dst)
             # if rsync finishes is that the file finished uploading
-            notify_by_mail(file_path, mail)
+            send_mail_file_uploaded(file_path, mail)
 
             destination_directory = os.path.join(pending_upload_directory, "..", "uploaded")
             os.makedirs(destination_directory, exist_ok=True)
