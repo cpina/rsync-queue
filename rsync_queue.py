@@ -10,6 +10,7 @@ import smtplib
 import signal
 import sys
 import select
+import urllib
 
 LOG_FILE=os.path.join(os.environ["HOME"], ".rsync-queue.log")
 LAST_PROGRESS_LINE=None
@@ -17,13 +18,12 @@ EMAIL_PROGRESS=None
 FILE_PATH=None
 
 def mail_last_progress():
-    file_name = os.path.basename(file_path)
+    file_name = os.path.basename(FILE_PATH)
 
     s = smtplib.SMTP("localhost")
     tolist = ["data@ace-expedition.net"]
-    message = """
-From: uploader@ace-expedition.net
-Subject: file progress
+    message = """From: uploader@ace-expedition.net
+Subject: file uploader progress {}
 
 The file "{}" was being uploaded but the uploader has been killed.
 
@@ -31,7 +31,7 @@ The last progress line from rsync is:
 {}
 
 
-""".format(FILE_PATH, LAST_PROGRESS_LINE)
+""".format(file_name, FILE_PATH, LAST_PROGRESS_LINE)
 
     s.sendmail("uploader@ace-expedition.net", tolist, message)
     s.quit()
@@ -150,13 +150,12 @@ def notify_by_mail(file_path, mail):
 
     s = smtplib.SMTP("localhost")
     tolist = ["data@ace-expedition.net"]
-    message = """
-From: uploader@ace-expedition.net
-Subject: file uploaded
+    message = """From: uploader@ace-expedition.net
+Subject: file uploaded: {}
 
 The file {} has been uploaded and now is available at:
-http://ace-expedition.net/uploaded/{}
-""".format(file_path, file_name)
+http://ace-expedition.net/uploaded/misc/{}
+""".format(file_name, file_name, urllib.parse.quote(file_name))
 
     s.sendmail("uploader@ace-expedition.net", tolist, message)
     s.quit()
