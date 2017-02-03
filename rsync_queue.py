@@ -12,6 +12,7 @@ import sys
 import select
 import urllib
 import configparser
+import psutil
 
 LOG_FILE = os.path.join(os.environ["HOME"], ".rsync-queue.log")
 
@@ -54,8 +55,14 @@ def size_mb_formatted(file_path):
 
 
 def signal_term_handler(signal, frame):
-    send_mail_last_progress()
     log("SIGTERM received")
+    send_mail_last_progress()
+
+    # Kills rsync / any subprocess
+    process = psutil.Process()
+    for proc in process.get_children(recursive=True):
+        proc.kill()
+
     sys.exit(0)
 
 
