@@ -20,21 +20,34 @@ LAST_PROGRESS_LINE = None
 FILE_PATH = None
 
 
+def size_mb_formatted(file_path):
+    size_mb = os.path.getsize(FILE_PATH) / 1024 / 1024
+    size_mb = "{:.02}".format(size_mb)
+
+    return size_mb
+
 def mail_last_progress():
     file_name = os.path.basename(FILE_PATH)
+    size_mb = size_mb_formatted(FILE_PATH)
+
+    d={'file_name': file_name,
+       'file_path': FILE_PATH,
+       'last_progress': LAST_PROGRESS_LINE,
+       'size_mb': size_mb}
 
     s = smtplib.SMTP("localhost")
     tolist = ["data@ace-expedition.net"]
     message = """From: uploader@ace-expedition.net
-Subject: file uploader progress {}
+Subject: file uploader progress {file_name}
 
-The file "{}" was being uploaded but the uploader has been killed.
+The file "{file_path}" ({size_mb} MB) was being uploaded but the uploader has been killed.
 
 The last progress line from rsync is:
-{}
+{last_progress}
+Size of the file: {}
 
 
-""".format(file_name, FILE_PATH, LAST_PROGRESS_LINE)
+""".format(**d)
 
     s.sendmail("uploader@ace-expedition.net", tolist, message)
     s.quit()
@@ -78,18 +91,14 @@ def execute_rsync(cmd, abort_if_fails=False, log_command=False):
                 line = line.replace("\r", "\n") # --progress uses \r
                 line = line.strip()
 
-                print(line)
-
-                log("stdout: {}".format(line))
+                log("O: {}".format(line))
                 update_progress(line)
 
             elif fd == proc.stderr.fileno():
                 line = proc.stderr.readline()
                 line = line.strip()
 
-                print(line)
-
-                log("stderr: {}".format(line))
+                log("E: {}".format(line))
 
 
         # Updates proc.returncode()read
@@ -108,6 +117,7 @@ def execute_rsync(cmd, abort_if_fails=False, log_command=False):
 
 
 def log(text):
+    print(text)
     f = open(LOG_FILE, "a")
     date_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     f.write("{}: {}\n".format(date_time, text))
@@ -133,12 +143,23 @@ def rsync(origin, destination):
 
 
 def file_pending_to_upload(directory):
+    return len(files_in_a_directory(directory)) > 0
     return len(glob.glob(os.path.join(directory, "*"))) > 0
+
+
+def files_in_a_directory(directory):
+    files = []
+
+    for f in glob.glob(os.path.join(directory, "*")):
+        if os.path.isfile(f):
+            files.append(f)
+
+    return files
 
 
 def move_next_file(source, destination):
     # Returns True if a file has been moved. False if there aren't more files
-    files = glob.glob(os.path.join(source, "*"))
+    files = files_in_a_directory(source)
 
     files.sort()
 
@@ -154,15 +175,23 @@ def move_next_file(source, destination):
 
 def notify_by_mail(file_path, mail):
     file_name = os.path.basename(file_path)
+    size_mb = size_mb_formatted(file_path)
+    url = "http://ace-expedition.net/uploaded/misc/" + urllib.parse.quote(file_name)
+
+    d = {'file_name': file_name,
+         'file_path': file_path,
+         'size_mb': size_mb,
+         'url': url
+        }
 
     s = smtplib.SMTP("localhost")
     tolist = ["data@ace-expedition.net"]
     message = """From: uploader@ace-expedition.net
-Subject: file uploaded: {}
+Subject: file uploaded: {file_name}
 
-The file {} has been uploaded and now is available at:
-http://ace-expedition.net/uploaded/misc/{}
-""".format(file_name, file_name, urllib.parse.quote(file_name))
+The file {file_name} has been uploaded and now is available at:
+http://ace-expedition.net/uploaded/misc/{url} [{size_mb} MB]
+""".format(d)
 
     s.sendmail("uploader@ace-expedition.net", tolist, message)
     s.quit()
