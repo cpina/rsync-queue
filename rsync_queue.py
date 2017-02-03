@@ -216,27 +216,17 @@ Size of the file: {}
 """
     send_mail(message)
 
-def send_mail_file_uploaded(file_path, mail):
-    d = {'file_name': file_name,
-         'file_path': file_path,
-         'size_mb': size_mb,
-         'from': read_config('notification_email_from')
-        }
-
-    s = smtplib.SMTP("localhost")
-    tolist = [read_config('notification_email_to')]
+def send_mail_file_uploaded(file_path):
     message = """From: {from}
 Subject: file uploaded: {file_name}
 
 The file {file_name} has been uploaded and now is available at:
 {url} [{size_mb} MB]
-""".format(d)
-    log("Sending email: {}".format(message))
-    s.sendmail(read_config('notification_email_from'), tolist, message)
-    s.quit()
+"""
+    send_mail(message)
 
 
-def start_uploading(directory, rsync_dst, mail):
+def start_uploading(directory, rsync_dst):
     pending_upload_directory = os.path.join(directory, "uploading")
 
     while True:
@@ -244,7 +234,7 @@ def start_uploading(directory, rsync_dst, mail):
             file_path = glob.glob(os.path.join(pending_upload_directory, "*"))[0]
             rsync(file_path, rsync_dst)
             # if rsync finishes is that the file finished uploading
-            send_mail_file_uploaded(file_path, mail)
+            send_mail_file_uploaded(file_path)
 
             destination_directory = os.path.join(pending_upload_directory, "..", "uploaded")
             os.makedirs(destination_directory, exist_ok=True)
@@ -261,8 +251,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("directory", help="Directory to upload", type=str)
     parser.add_argument("rsync_dst", help="rsync destination, e.g. ", type=str)
-    parser.add_argument("destination_mail", help="Destination mail to email when it's finished", type=str)
 
     args = parser.parse_args()
     signal.signal(signal.SIGTERM, signal_term_handler)
-    start_uploading(args.directory, args.rsync_dst, args.destination_mail)
+    start_uploading(args.directory, args.rsync_dst)
