@@ -9,6 +9,7 @@ import subprocess
 import smtplib
 import signal
 import sys
+import select
 
 LOG_FILE=os.path.join(os.environ["HOME"], ".rsync-queue.log")
 LAST_PROGRESS_LINE=None
@@ -59,16 +60,36 @@ def execute_rsync(cmd, abort_if_fails=False, log_command=False):
 
         log("Execute: {}".format(command))
 
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE) #, universal_newlines=True)
+    proc = subprocess.Popen(cmd, bufsize=1,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                            universal_newlines=True)
 
     while True:
+        reads = [proc.stdout.fileno(), proc.stderr.fileno()]
+
+        # Waits that stdout or stderr are ready to be read
+        (read_fd, _, _) = select.select(reads, [], [], 1) # 1 is 1 second timeout
+
+        lines = []
+        for fd in read_fd:
+            if fd == proc.stdout.fileno():
+                read = proc.stdout.readline()
+                read = read.replace("\r", "\n") # --progress uses \r
+                read = read.replace("\n", "")
+
+                log("stdout: {}".format(read))
+                lines.append(read)
+
+            elif fd == proc.stderr.fileno():
+                read = proc.stderr.readline()
+                read = read.replace("\n", "")
+                log("stderr: {}".format(read))
+
+        process(lines)
+
         # Updates proc.returncode()
         proc.poll()
-        output = proc.stdout.read()
-        log("OUTPUT: {}".format(output))
-        output = output.decode('utf-8', errors='ignore')
-        output_progress = output.split("\n")
-        process(output_progress)
 
         if proc.returncode is not None:
             break
