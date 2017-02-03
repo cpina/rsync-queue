@@ -53,14 +53,19 @@ def process(lines):
 
 def execute_rsync(cmd, abort_if_fails=False, log_command=False):
     if log_command:
-        log("Execute: {}".format(" ".join(cmd)))
+        command = ""
+        for argument in cmd:
+            command += '"{}" '.format(argument)
 
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        log("Execute: {}".format(command))
+
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE) #, universal_newlines=True)
 
     while True:
         # Updates proc.returncode()
         proc.poll()
         output = proc.stdout.read()
+        log("OUTPUT: {}".format(output))
         output = output.decode('utf-8', errors='ignore')
         output_progress = output.split("\n")
         process(output_progress)
@@ -80,16 +85,16 @@ def execute_rsync(cmd, abort_if_fails=False, log_command=False):
 def log(text):
     f = open(LOG_FILE, "a")
     date_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    f.write("{}: {}".format(date_time, text))
+    f.write("{}: {}\n".format(date_time, text))
     f.close()
 
 
 def rsync(origin, destination):
     ssh_options = ['-e', 'ssh -o ConnectTimeout=120 -o ServerAliveInterval=120']
-    rsync_options = ["-rvt", "--inplace", "--timeout=120", "--bwlimit=12k"]
+    rsync_options = ["-rvt", "--progress", "--inplace", "--timeout=120", "--bwlimit=6k"]
 
     while True:
-        retval = execute(["rsync"] + ssh_options + rsync_options + [origin] + [destination], print_command = True)
+        retval = execute_rsync(["rsync"] + ssh_options + rsync_options + [origin] + [destination], log_command = True)
         if retval == 0:
             log("It finished uploading the file: {}".format(origin))
             break
