@@ -49,7 +49,7 @@ def read_config(key):
 
 def size_mb_formatted(file_path):
     size_mb = os.path.getsize(FILE_PATH) / 1024 / 1024
-    size_mb = "{:.3f}".format(size_mb)
+    size_mb = "{:.2f}".format(size_mb)
 
     return size_mb
 
@@ -86,8 +86,6 @@ def execute_rsync(cmd, abort_if_fails=False, log_command=False):
                             stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE,
                             universal_newlines=True)
-
-    RSYNC_PID = proc.pid
 
     while True:
         reads = [proc.stdout.fileno(), proc.stderr.fileno()]
@@ -136,7 +134,10 @@ def log(text):
 
 def rsync(origin, destination):
     global FILE_PATH
+    global LAST_PROGRESS_LINE
+
     FILE_PATH = origin
+    LAST_PROGRESS_LINE = None
 
     ssh_options = ['-e', 'ssh -o ConnectTimeout=120 -o ServerAliveInterval=120']
     rsync_options = ["-vtaz", "--progress", "--inplace", "--timeout=120", "--bwlimit={}".format(read_config('rsync_bwlimit'))]
