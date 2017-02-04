@@ -125,7 +125,6 @@ def execute_rsync(cmd, abort_if_fails=False, log_command=False):
 
 
 def log(text):
-    print(text)
     f = open(LOG_FILE, "a")
     date_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     f.write("{}: {}\n".format(date_time, text))
