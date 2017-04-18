@@ -14,7 +14,26 @@ import urllib
 import configparser
 import psutil
 
-LOG_FILE = os.path.join(os.environ["HOME"], ".rsync-queue.log")
+# rsync_queue.py: uploads files using rsync to a server, sends an email
+# when it's done or when the program is killed. It keeps re-trying until
+# succeeding. Very useful for unstable connections.
+#
+# Copyright (C) 2017 Carles Pina i Estany <carles@pina.cat>
+#
+# This program is free software: you can redistribute it and/or modify it
+# under the terms of the GNU Affero General Public License as published by the
+# Free Software Foundation, either version 3 of the License, or (at your
+# option) any later version.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+# FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License
+# for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+LOG_FILE = os.path.join(os.environ["HOME"], ".rsync_queue.log")
 
 # These variables are global because they are accessed from
 # signal_term_handler when the process is terminated
@@ -35,7 +54,7 @@ base_url = http://ace-expedition.net/uploaded/misc/
 
 def read_config(key):
     cp = configparser.ConfigParser()
-    path = os.path.join(os.getenv("HOME"), ".config", "rsync-uploader.conf")
+    path = os.path.join(os.getenv("HOME"), ".config", "rsync_queue.conf")
     result = cp.read(path)
 
     if result == []:
